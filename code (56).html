@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visible Hyper-Fast Brain Simulation</title>
+    <style>
+        body {
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0;
+            display: flex; flex-direction: column; align-items: center;
+            background-color: #020203; 
+            color: #c0c0c8; min-height: 100vh; overflow-x: hidden;
+        }
+        #header {
+            background: linear-gradient(90deg, #0a0a14, #06081a); color: #90f0ff; padding: 14px;
+            width: 100%; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.8);
+            z-index: 10; border-bottom: 1px solid #90f0ff;
+        }
+        #header h1 { margin: 0; font-weight: 400; font-size: 1.4em; }
+
+        #controls {
+            display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; padding: 8px;
+            background-color: #06060c; width: 100%; box-sizing: border-box;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.7); border-bottom: 1px solid #101020;
+        }
+        .control-group {
+            margin: 5px 7px; padding: 8px; background-color: #0a0a14; border-radius: 6px;
+            min-width: 200px; box-shadow: 0 1px 2px rgba(0,0,0,0.6); border: 1px solid #181824;
+        }
+        .control-group h3 {
+            margin-top: 0; color: #90f0ff; border-bottom: 1px solid #1c1c28; padding-bottom: 5px;
+            font-weight: 300; font-size: 0.9em;
+        }
+        #controls input[type="file"], #controls button {
+            padding: 7px 10px; margin-top: 6px; border-radius: 3px; border: none;
+            color: white; cursor: pointer; font-size: 0.8em; display: block; width: 100%;
+            box-sizing: border-box; transition: background-color 0.08s ease, transform 0.04s ease;
+        }
+        #controls button { background-color: #007bff; }
+        #controls button:hover { background-color: #0056b3; transform: translateY(-1px); }
+        #controls button:active { transform: translateY(0px); }
+        #startStopBtn.running { background-color: #b71c1c; }
+        #startStopBtn.running:hover { background-color: #8a1414; }
+        #controls input[type="file"] { background-color: #181824; }
+        #controls label { display: block; margin: 5px 0; cursor: pointer; font-size: 0.75em; }
+        #controls input[type="checkbox"] { margin-right: 4px; vertical-align: middle; accent-color: #90f0ff; transform: scale(0.8); }
+
+        #simulationArea { display: flex; flex-direction: column; align-items: center; padding: 8px; width: 100%; box-sizing: border-box; }
+        #imagePreviewContainer {
+            margin-bottom: 8px; border: 1px dashed #181824; padding: 5px; min-height: 80px; min-width: 80px;
+            max-width: 200px; max-height: 200px; display: flex; justify-content: center; align-items: center; background-color: #0a0a10;
+        }
+        #imagePreview { max-width: 100%; max-height: 180px; display: none; }
+
+        #brainSvgContainer { width: 500px; height: 400px; background-color: transparent; border-radius: 6px; padding:3px; position: relative; }
+        .brain-region-path {
+            stroke: #202838; /* Darker stroke for definition */
+            stroke-width: 0.7;
+            fill: rgba(30, 40, 70, 0.15); /* Default dim, slightly blue fill */
+            transition: fill 0.1s linear, stroke 0.1s linear; /* Fast transition for lobe colors */
+        }
+        .brain-region-path:hover { stroke: #90f0ff; stroke-width: 1.2; }
+        
+        .brain-region-path.active-low { fill: rgba(50, 70, 130, 0.25); }
+        .brain-region-path.active-medium { fill: rgba(70, 100, 180, 0.4); stroke: #405080; }
+        .brain-region-path.active-high { fill: rgba(100, 140, 220, 0.6); stroke: #6080c0; }
+        .brain-region-path.active-peak { fill: rgba(150, 190, 255, 0.75); stroke: #80a0e0; }
+
+
+        .neuron-dot {
+            fill: #10141e; 
+            r: 0.8; 
+            opacity: 0.65; /* Slightly more visible base */
+            transition: fill 0.03s linear, r 0.03s linear, opacity 0.03s linear; /* Fast fade back for blips */
+        }
+        .neuron-dot.firing-hot { fill: #FFFFFF; r: 1.7; opacity: 1; }
+        .neuron-dot.firing-primary { fill: #FFFF66; r: 1.5; opacity: 0.95; } /* Adjusted primary yellow */
+        .neuron-dot.firing-secondary { fill: #80e0ff; r: 1.3; opacity: 0.9; }
+
+
+        .connection-line { stroke: #101828; stroke-width: 0.5; opacity: 0.1; transition: stroke 0.04s ease, opacity 0.04s ease; }
+        .connection-line.transmitting { stroke: #FFEB3B; stroke-width: 1.6; opacity: 0.6; }
+        
+        #infoPanel { /* Style remains similar */
+            position: fixed; bottom: 3px; right: 3px; background-color: rgba(8, 8, 16, 0.98);
+            color: #9898a8; padding: 5px 8px; border-radius: 4px; font-size: 0.7em;
+            max-width: 220px; border: 1px solid #90f0ff; z-index: 20;
+            box-shadow: 0 0 6px rgba(144,240,255,0.05);
+        }
+        #infoPanel h4 { margin-top:0; color: #90f0ff; font-weight: 300; font-size: 0.8em;}
+        #statusArea { width:100%; text-align: center; padding: 3px; font-size: 0.7em; color: #444; }
+    </style>
+</head>
+<body>
+    <div id="header"><h1>Visible Hyper-Fast Brain Simulation</h1></div>
+    <div id="controls"> 
+        <div class="control-group"><h3>1. Image (Opt.)</h3><input type="file" id="imageUpload" accept="image/*"><div id="imagePreviewContainer"><img id="imagePreview" src="#" alt="Image Preview" /></div></div>
+        <div class="control-group"><h3>2. Cues</h3><p style="font-size:0.7em; color:#777;">Influence baseline:</p>
+            <label><input type="checkbox" class="feature-check" data-target-baselines='{"temporal_lobe":0.3, "occipital_lobe":0.1}'> Faces</label>
+            <label><input type="checkbox" class="feature-check" data-target-baselines='{"temporal_lobe":0.25, "frontal_lobe":0.25, "parietal_lobe":0.05}'> Text/Lang</label>
+            <label><input type="checkbox" class="feature-check" data-target-baselines='{"occipital_lobe":0.3, "parietal_lobe":0.2}'> Objects</label>
+            <label><input type="checkbox" class="feature-check" data-target-baselines='{"temporal_lobe":0.15, "occipital_lobe":0.2, "parietal_lobe":0.1}'> Scene</label>
+            <label><input type="checkbox" class="feature-check" data-target-baselines='{"occipital_lobe":0.35}'> Colorful</label>
+            <label><input type="checkbox" class="feature-check" data-target-baselines='{"occipital_lobe":0.2, "parietal_lobe":0.2, "cerebellum":0.15}'> Movement</label>
+            <label><input type="checkbox" class="feature-check" data-target-baselines='{"temporal_lobe":0.2, "frontal_lobe":0.3, "brain_stem":0.1}'> Emotion</label>
+            <label><input type="checkbox" class="feature-check" data-target-baselines='{"frontal_lobe":0.35, "parietal_lobe":0.1}'> Planning</label>
+        </div>
+        <div class="control-group"><h3>3. Sim Control</h3><button id="startStopBtn">Start Sim</button><button id="stimulateBtn">Inject Stimulus</button><button id="resetBtn" style="background-color: #701c1c; margin-top:6px;">Full Reset</button><p id="statusMessage" style="font-size:0.7em; margin-top:4px; color:#666;"></p></div>
+    </div>
+    <div id="simulationArea"> 
+         <div id="brainSvgContainer">
+            <svg id="brainSvg" width="100%" height="100%" viewBox="0 0 600 480" preserveAspectRatio="xMidYMid meet">
+                <defs></defs><g id="connections_layer"></g>
+                <g id="frontal_lobe_neurons"></g><g id="parietal_lobe_neurons"></g><g id="temporal_lobe_neurons"></g>
+                <g id="occipital_lobe_neurons"></g><g id="cerebellum_neurons"></g><g id="brain_stem_neurons"></g>
+                <path id="brain_stem" class="brain-region-path" data-name="Brain Stem" data-info="Core functions, arousal, relay." d="M 280 460 C 270 440, 270 410, 290 400 L 310 400 C 330 410, 330 440, 320 460 Z" />
+                <path id="cerebellum" class="brain-region-path" data-name="Cerebellum" data-info="Motor coordination, balance, learning." d="M 330 370 C 270 370, 230 420, 300 460 L 400 460 C 470 420, 430 370, 370 370 Z" transform="translate(30, -10)"/>
+                <path id="occipital_lobe" class="brain-region-path" data-name="Occipital Lobe" data-info="Visual processing (color, form, motion)." d="M 380 250 C 460 230, 530 270, 530 350 C 530 400, 460 430, 380 410 C 360 390, 330 300, 380 250 Z" />
+                <path id="temporal_lobe" class="brain-region-path" data-name="Temporal Lobe" data-info="Auditory, memory, object/face ID, language." d="M 200 340 C 150 310, 150 220, 250 220 C 330 220, 370 300, 350 390 C 300 410, 230 400, 200 340 Z" />
+                <path id="parietal_lobe" class="brain-region-path" data-name="Parietal Lobe" data-info="Spatial processing, sensory integration, attention." d="M 260 140 C 330 90, 460 120, 480 220 C 460 290, 330 320, 280 260 C 230 220, 230 170, 260 140 Z" />
+                <path id="frontal_lobe" class="brain-region-path" data-name="Frontal Lobe" data-info="Executive functions, planning, decisions, motor control." d="M 100 130 C 200 60, 350 110, 300 230 C 250 310, 130 280, 100 180 C 80 150, 80 130, 100 130 Z" />
+            </svg>
+        </div>
+    </div>
+    <div id="statusArea">Initialize using 'Start Sim'.</div>
+    <div id="infoPanel">
+        <h4>Brain Region Info</h4> <p id="regionNameEl">Hover over a brain region.</p>
+        <p id="regionInfoTextEl" style="font-size:0.85em;"></p> <hr style="border-color: #1c1c28; margin: 5px 0;">
+        <p style="font-size:0.65em; color:#777;">Disclaimer: Highly conceptual model.</p>
+    </div>
+    <canvas id="hiddenImageCanvas" style="display:none;"></canvas>
+
+    <script>
+        const imageUpload = document.getElementById('imageUpload'), imagePreview = document.getElementById('imagePreview'),
+              stimulateBtn = document.getElementById('stimulateBtn'), startStopBtn = document.getElementById('startStopBtn'),
+              resetBtn = document.getElementById('resetBtn'), globalStatusArea = document.getElementById('statusArea'),
+              regionNameDisplay = document.getElementById('regionNameEl'), regionInfoTextDisplay = document.getElementById('regionInfoTextEl'),
+              brainSvg = document.getElementById('brainSvg'), connectionsLayer = document.getElementById('connections_layer'),
+              hiddenCanvas = document.getElementById('hiddenImageCanvas'), hiddenCtx = hiddenCanvas.getContext('2d'),
+              statusMessage = document.getElementById('statusMessage');
+
+        const NEURONS_DENSITY_FACTOR = 0.25; 
+        const MIN_NEURONS_PER_REGION = 150;
+        const MAX_NEURONS_PER_REGION = 800;
+        const MAX_TOTAL_NEURONS_OVERALL = 10000;
+
+        const ACTIVATION_THRESHOLD_PROPAGATE = 0.7; 
+        const PROPAGATION_BASE_DELAY = 50;      // EVEN FASTER
+        const FIRING_PROBABILITY_SCALE = 0.08;   // FEWER dots per activation, rely on many dots & cascade
+        const CONNECTION_TRANSMIT_DURATION = 60; 
+        const NEURON_FLASH_DURATION = 50;       // VERY SHORT BLIP
+        const ACTIVATION_DECAY_RATE = 0.7;      // HYPER FAST DECAY
+        const TARGET_BASELINE_REACH_SPEED = 0.1; // Faster baseline adjustment
+        const SPONTANEOUS_FIRE_CHANCE_BASE = 0.00001; 
+        const SPONTANEOUS_FIRE_SCALE_FROM_BASELINE = 0.0003;
+        const CASCADE_DELAY_MS = 0.5;             // Sub-millisecond for extreme speed, might be visually just a shimmer
+        const MAX_CASCADE_LENGTH = 40;          
+
+        const LOBE_CONNECTIONS = { /* Same */ 
+            'occipital_lobe': [{ target: 'parietal_lobe', delay: 1.0, strength: 0.5 }, { target: 'temporal_lobe', delay: 1.1, strength: 0.6 }],
+            'parietal_lobe': [{ target: 'frontal_lobe', delay: 1.0, strength: 0.45 }, { target: 'temporal_lobe', delay: 0.9, strength: 0.3 }],
+            'temporal_lobe': [{ target: 'frontal_lobe', delay: 1.2, strength: 0.55 }, { target: 'parietal_lobe', delay: 0.9, strength: 0.25 }],
+            'frontal_lobe': [{target: 'parietal_lobe', delay: 1.3, strength: 0.15, type: 'feedback'}, {target: 'temporal_lobe', delay: 1.4, strength: 0.1, type: 'feedback'}],
+            'cerebellum': [{ target: 'frontal_lobe', delay: 0.6, strength: 0.4 }, { target: 'parietal_lobe', delay: 0.7, strength: 0.3 }],
+            'brain_stem': [{ target: 'frontal_lobe', delay: 1.3, strength: 0.15 }, { target: 'parietal_lobe', delay: 1.3, strength: 0.15 }, { target: 'temporal_lobe', delay: 1.3, strength: 0.15 }, { target: 'occipital_lobe', delay: 1.3, strength: 0.15 }]
+        };
+
+        let regionData = {}; let transmissionQueue = []; let simulationTime = 0;
+        let lastTimestamp = 0; let simulationRunning = false; let animationFrameId = null;
+        let totalNeuronsCreated = 0;
+
+        function isPointInSvgPath(p,x,y){if(!p||!brainSvg)return!1;let q=brainSvg.createSVGPoint();q.x=x;q.y=y;try{const r=p.getScreenCTM();if(!r)return!1;const s=r.inverse();if(!s)return!1;const t=q.matrixTransform(s);return p.isPointInFill(t)}catch(u){const v=p.getBBox();return x>=v.x&&x<=v.x+v.width&&y>=v.y&&y<=v.y+v.height}}
+
+        function initializeBrainModel() { 
+            connectionsLayer.innerHTML = ''; totalNeuronsCreated = 0;
+            Object.values(regionData).forEach(data => { 
+                if (data.neuronGroupEl) data.neuronGroupEl.innerHTML = ''; 
+                if(data.activeTimeouts) data.activeTimeouts.forEach(clearTimeout);
+                data.activeTimeouts = []; 
+            });
+            regionData = {}; const brainRegionPaths = document.querySelectorAll('.brain-region-path');
+            brainRegionPaths.forEach(pathEl => {
+                const regionId = pathEl.id; const neuronGroupId = regionId + '_neurons';
+                const neuronGroupEl = document.getElementById(neuronGroupId); if (!neuronGroupEl) { console.error("Neuron group missing for", regionId); return; }
+                neuronGroupEl.innerHTML = ''; const pathBBox = pathEl.getBBox(); const area = pathBBox.width * pathBBox.height;
+                let numDots = Math.floor(area * NEURONS_DENSITY_FACTOR);
+                numDots = Math.max(MIN_NEURONS_PER_REGION, Math.min(MAX_NEURONS_PER_REGION, numDots));
+                if (totalNeuronsCreated + numDots > MAX_TOTAL_NEURONS_OVERALL) numDots = Math.max(0, MAX_TOTAL_NEURONS_OVERALL - totalNeuronsCreated);
+
+                const neurons = []; let attempts = 0; const maxAttempts = numDots * 30; 
+                for (let i = 0; i < numDots && attempts < maxAttempts; attempts++) {
+                    const cxRnd = pathBBox.x + Math.random() * pathBBox.width; const cyRnd = pathBBox.y + Math.random() * pathBBox.height;
+                    if (isPointInSvgPath(pathEl, cxRnd, cyRnd)) {
+                        const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                        dot.setAttribute("cx", cxRnd); dot.setAttribute("cy", cyRnd); dot.setAttribute("class", "neuron-dot");
+                        neuronGroupEl.appendChild(dot); neurons.push(dot); i++;
+                    }
+                }
+                totalNeuronsCreated += neurons.length;
+                regionData[regionId] = {
+                    pathEl: pathEl, neuronDots: neurons, activation: 0.0001, targetBaselineActivation: 0.0001, 
+                    name: pathEl.dataset.name, info: pathEl.dataset.info, connections: LOBE_CONNECTIONS[regionId] || [],
+                    neuronGroupEl: neuronGroupEl, centroid: { x: pathBBox.x + pathBBox.width / 2, y: pathBBox.y + pathBBox.height / 2 },
+                    activeTimeouts: [] 
+                };
+            });
+            Object.keys(regionData).forEach(fromId => { 
+                 const fromRegion = regionData[fromId]; fromRegion.connections.forEach(conn => {
+                    const toRegion = regionData[conn.target]; if (fromRegion && toRegion) {
+                        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                        line.setAttribute("x1", fromRegion.centroid.x); line.setAttribute("y1", fromRegion.centroid.y);
+                        line.setAttribute("x2", toRegion.centroid.x); line.setAttribute("y2", toRegion.centroid.y);
+                        line.setAttribute("class", "connection-line"); line.id = `conn-${fromId}-to-${conn.target}`;
+                        connectionsLayer.appendChild(line); conn.connectionEl = line; } });
+            });
+            globalStatusArea.textContent = `Initialized with ${totalNeuronsCreated} conceptual neurons.`;
+            updateAllVisuals(true); applyCheckboxBaselines();
+        }
+
+        function applyCheckboxBaselines() { 
+            Object.values(regionData).forEach(data => data.targetBaselineActivation = 0.0001); 
+            document.querySelectorAll('.feature-check:checked').forEach(cb => {
+                try { const baselines = JSON.parse(cb.dataset.targetBaselines);
+                    Object.entries(baselines).forEach(([regionId, baselineAmount]) => {
+                        if (regionData[regionId]) regionData[regionId].targetBaselineActivation = Math.max(regionData[regionId].targetBaselineActivation, parseFloat(baselineAmount));
+                    });
+                } catch(e) { console.error("Error parsing baseline data:", e, cb.dataset.targetBaselines); }
+            });
+        }
+        document.querySelectorAll('.feature-check').forEach(cb => { cb.addEventListener('change', () => {
+            applyCheckboxBaselines();
+            if (simulationRunning) globalStatusArea.textContent = "Cues updated, influencing ongoing simulation.";
+        }); });
+
+
+        imageUpload.addEventListener('change', (event) => { 
+            const file = event.target.files[0]; if (file) { const reader = new FileReader();
+                reader.onload = (e) => { imagePreview.src = e.target.result; imagePreview.style.display = 'block';
+                imagePreviewContainer.style.borderStyle = 'solid'; statusMessage.textContent = 'Image loaded for next stimulus.'; }
+                reader.readAsDataURL(file); }
+        });
+        document.querySelectorAll('.brain-region-path').forEach(pathEl => { 
+             pathEl.addEventListener('mouseover', () => { const data = regionData[pathEl.id];
+                if (data) { regionNameDisplay.textContent = data.name; regionInfoTextDisplay.textContent = data.info; } });
+        });
+        
+        startStopBtn.addEventListener('click', () => { 
+            simulationRunning = !simulationRunning;
+            if (simulationRunning) {
+                startStopBtn.textContent = 'Stop Sim'; startStopBtn.classList.add('running');
+                lastTimestamp = performance.now(); simulationTime = 0; transmissionQueue = []; applyCheckboxBaselines();
+                clearAllActiveTimeouts(); 
+                animationFrameId = requestAnimationFrame(simulationLoop); globalStatusArea.textContent = 'Continuous simulation running...'; statusMessage.textContent = '';
+            } else {
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                startStopBtn.textContent = 'Start Sim'; startStopBtn.classList.remove('running');
+                clearAllActiveTimeouts(); 
+                globalStatusArea.textContent = 'Continuous simulation stopped.';
+            }
+        });
+        resetBtn.addEventListener('click', () => { 
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            simulationRunning = false; startStopBtn.textContent = 'Start Sim'; startStopBtn.classList.remove('running');
+            transmissionQueue = []; simulationTime = 0; clearAllActiveTimeouts();
+            Object.values(regionData).forEach(data => { data.activation = 0.0001; data.targetBaselineActivation = 0.0001; });
+            document.querySelectorAll('.feature-check').forEach(cb => cb.checked = false); updateAllVisuals(true);
+            imagePreview.style.display = 'none'; imageUpload.value = '';
+            statusMessage.textContent = 'Full Reset. Sim stopped, cues cleared.'; globalStatusArea.textContent = 'System reset. Start sim when ready.';
+        });
+        stimulateBtn.addEventListener('click', () => {
+            if (!simulationRunning) { statusMessage.textContent = 'Start continuous simulation first.'; return; }
+            statusMessage.textContent = 'Injecting stimulus...'; applyCheckboxBaselines();
+            if (imagePreview.src && !imagePreview.src.endsWith('#')) { analyzeBasicImageForStimulus(); } 
+            else { 
+                if(regionData.frontal_lobe) regionData.frontal_lobe.activation = Math.min(1, regionData.frontal_lobe.activation + 0.25); // Stronger generic if no image
+                if(regionData.parietal_lobe) regionData.parietal_lobe.activation = Math.min(1, regionData.parietal_lobe.activation + 0.2);
+                if(regionData.occipital_lobe) regionData.occipital_lobe.activation = Math.min(1, regionData.occipital_lobe.activation + 0.15); 
+                Object.keys(regionData).forEach(checkPropagation);
+            }
+        });
+        
+        function analyzeBasicImageForStimulus() { 
+            const ANALYSIS_DIM = 32; const img = new Image(); // Smallest for speed
+            img.onload = () => {
+                let aspect = img.width / img.height; let nw = ANALYSIS_DIM, nh = ANALYSIS_DIM / aspect;
+                if (img.height > img.width) { nh = ANALYSIS_DIM; nw = ANALYSIS_DIM * aspect; }
+                hiddenCanvas.width = nw; hiddenCanvas.height = nh; hiddenCtx.drawImage(img, 0, 0, nw, nh);
+                const imageData = hiddenCtx.getImageData(0, 0, nw, nh).data; let sumBrightness = 0, edgeCount = 0;
+                for (let i = 0; i < imageData.length; i += 4) { sumBrightness += (imageData[i] + imageData[i+1] + imageData[i+2]) / 3;
+                    if (i + 4 < imageData.length && i + (nw * 4) < imageData.length) { if (Math.abs(imageData[i] - imageData[i+4]) > 45 || Math.abs(imageData[i] - imageData[i + (nw*4)]) > 45) edgeCount++; }
+                }
+                const normBrightness = (sumBrightness / (imageData.length / 4)) / 255; const normEdges = Math.min(1, edgeCount / (imageData.length / 50)); 
+
+                if (regionData.occipital_lobe) regionData.occipital_lobe.activation = Math.min(1, regionData.occipital_lobe.activation + normBrightness * 0.35 + normEdges * 0.5); 
+                if (regionData.parietal_lobe && normEdges > 0.01) regionData.parietal_lobe.activation = Math.min(1, regionData.parietal_lobe.activation + normEdges * 0.25);
+                if (regionData.temporal_lobe && normBrightness > 0.15) regionData.temporal_lobe.activation = Math.min(1, regionData.temporal_lobe.activation + normBrightness * 0.2);
+                
+                Object.keys(regionData).forEach(checkPropagation); statusMessage.textContent = 'Image stimulus injected.';
+            };
+            img.onerror = () => { statusMessage.textContent = "Error processing image for stimulus."; }
+            img.src = imagePreview.src;
+        }
+        function checkPropagation(regionId) { 
+            const sourceRegion = regionData[regionId]; if (!sourceRegion) return;
+            if (sourceRegion.activation >= ACTIVATION_THRESHOLD_PROPAGATE) {
+                sourceRegion.connections.forEach(conn => {
+                    const arrival = simulationTime + PROPAGATION_BASE_DELAY * conn.delay * (Math.random() * 0.05 + 0.975); // Very little randomness
+                    transmissionQueue.push({
+                        fromId: regionId, toId: conn.target, arrivalTime: arrival,
+                        strength: sourceRegion.activation * conn.strength * (Math.random() * 0.05 + 0.975),
+                        connectionEl: conn.connectionEl
+                    });
+                });
+                sourceRegion.activation *= 0.2; // EXTREMELY strong refractory
+            }
+        }
+        
+        function clearAllActiveTimeouts() {
+            Object.values(regionData).forEach(data => {
+                if (data.activeTimeouts && data.activeTimeouts.length) {
+                    data.activeTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+                    data.activeTimeouts = [];
+                }
+            });
+        }
+
+        function fireNeuronsInRegion(regionId, isSecondary = false, specificDotsToFire = null) {
+            const data = regionData[regionId]; if (!data || data.neuronDots.length === 0) return;
+            
+            let dotsForCascade;
+            if (specificDotsToFire) {
+                dotsForCascade = specificDotsToFire;
+            } else {
+                let numToFire = Math.max(1, Math.floor(data.neuronDots.length * data.activation * FIRING_PROBABILITY_SCALE));
+                numToFire = Math.min(numToFire, data.neuronDots.length, MAX_CASCADE_LENGTH);
+                dotsForCascade = [...data.neuronDots].sort(() => 0.5 - Math.random()).slice(0, numToFire);
+            }
+            if(dotsForCascade.length === 0) return;
+
+            let firingClass = isSecondary ? 'firing-secondary' : 'firing-primary';
+            if (!isSecondary && data.activation > 0.85) firingClass = 'firing-hot';
+            
+            if (!data.activeTimeouts) data.activeTimeouts = [];
+            // Do not clear previous timeouts here, as multiple cascades might be intended to overlap for intense activity
+
+            for (let i = 0; i < dotsForCascade.length; i++) {
+                const dot = dotsForCascade[i];
+                const cascadeTimeoutId = setTimeout(() => {
+                    if(!document.body.contains(dot)) return;
+                    
+                    dot.classList.add(firingClass); // This applies the bright styles immediately
+                    
+                    // The CSS transition on .neuron-dot handles the fade back when the class is removed.
+                    // We only need one timeout to remove the class after NEURON_FLASH_DURATION.
+                    const flashCleanupTimeoutId = setTimeout(() => {
+                        if(!document.body.contains(dot)) return;
+                        dot.classList.remove('firing-hot', 'firing-primary', 'firing-secondary');
+                        if (data.activeTimeouts) data.activeTimeouts = data.activeTimeouts.filter(id => id !== flashCleanupTimeoutId);
+                    }, NEURON_FLASH_DURATION);
+                    if (data.activeTimeouts) data.activeTimeouts.push(flashCleanupTimeoutId);
+
+                    if (data.activeTimeouts) data.activeTimeouts = data.activeTimeouts.filter(id => id !== cascadeTimeoutId);
+                }, i * CASCADE_DELAY_MS);
+                if (data.activeTimeouts) data.activeTimeouts.push(cascadeTimeoutId);
+            }
+        }
+
+        function simulationLoop(timestamp) {
+            if (!simulationRunning) return;
+            const deltaTime = Math.min(1000/24, timestamp - lastTimestamp); // Cap at ~24fps for extreme cases
+            lastTimestamp = timestamp;
+            simulationTime += deltaTime;
+
+            const stillPending = [];
+            for(let i=0; i < transmissionQueue.length; i++) { 
+                const tx = transmissionQueue[i];
+                if (simulationTime >= tx.arrivalTime) {
+                    const targetRegion = regionData[tx.toId];
+                    if (targetRegion) {
+                        targetRegion.activation = Math.min(1, targetRegion.activation + tx.strength);
+                        if (tx.connectionEl) {
+                            tx.connectionEl.classList.add('transmitting');
+                            const el = tx.connectionEl;
+                            setTimeout(() => { if(el) el.classList.remove('transmitting');}, CONNECTION_TRANSMIT_DURATION);
+                        }
+                        fireNeuronsInRegion(tx.toId, true); checkPropagation(tx.toId);
+                    }
+                } else { stillPending.push(tx); }
+            }
+            transmissionQueue = stillPending;
+
+            Object.keys(regionData).forEach(regionId => { 
+                const data = regionData[regionId]; if (!data) return;
+                const diffToBaseline = data.targetBaselineActivation - data.activation;
+                data.activation += diffToBaseline * TARGET_BASELINE_REACH_SPEED * (deltaTime / 16.67); 
+                data.activation = Math.max(0.0001, data.activation * (1 - (ACTIVATION_DECAY_RATE * (deltaTime / 1000))));
+                
+                const spontaneousChanceThisFrame = (SPONTANEOUS_FIRE_CHANCE_BASE + data.targetBaselineActivation * SPONTANEOUS_FIRE_SCALE_FROM_BASELINE) * (data.neuronDots.length / 250) * (deltaTime / 16.67) ; 
+                if (data.neuronDots.length > 0 && Math.random() < spontaneousChanceThisFrame && data.activation < 0.8) { // Higher suppression threshold
+                    const boost = 0.1 + Math.random() * 0.25; data.activation = Math.min(1, data.activation + boost);
+                    const numSpontaneousDots = Math.max(1, Math.floor(data.neuronDots.length * 0.0005 * (data.activation + 0.02))); // Extremely few
+                    const spontaneousDots = [...data.neuronDots].sort(() => 0.5 - Math.random()).slice(0, numSpontaneousDots);
+                    fireNeuronsInRegion(regionId, false, spontaneousDots); 
+                    if (data.activation > ACTIVATION_THRESHOLD_PROPAGATE * 0.9) checkPropagation(regionId); 
+                }
+            });
+            
+            updateAllVisuals(); // Update lobe path classes
+            animationFrameId = requestAnimationFrame(simulationLoop);
+        }
+        
+        function updateAllVisuals(forceClear = false) {
+            Object.values(regionData).forEach(data => {
+                if(!data || !data.pathEl) return;
+
+                // Remove previous active classes
+                data.pathEl.classList.remove('active-low', 'active-medium', 'active-high', 'active-peak');
+
+                if (!forceClear && simulationRunning) {
+                    if (data.activation > 0.75) data.pathEl.classList.add('active-peak');
+                    else if (data.activation > 0.5) data.pathEl.classList.add('active-high');
+                    else if (data.activation > 0.25) data.pathEl.classList.add('active-medium');
+                    else if (data.activation > 0.05) data.pathEl.classList.add('active-low');
+                }
+                
+                if (forceClear) {
+                    if (data.neuronDots) data.neuronDots.forEach(dot => dot.classList.remove('firing-hot','firing-primary', 'firing-secondary'));
+                    if (data.connections) data.connections.forEach(conn => { if(conn.connectionEl) conn.connectionEl.classList.remove('transmitting'); });
+                }
+            });
+        }
+        
+        initializeBrainModel();
+        globalStatusArea.textContent = 'System Initialized. Press "Start Sim".';
+    </script>
+</body>
+</html>
